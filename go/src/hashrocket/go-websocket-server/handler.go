@@ -16,6 +16,7 @@ type benchHandler struct {
 type WsMsg struct {
 	Type    string      `json:"type"`
 	Payload interface{} `json:"payload"`
+	respC chan bool
 }
 
 type BroadcastResult struct {
@@ -31,11 +32,31 @@ func NewBenchHandler() *benchHandler {
 }
 
 func (h *benchHandler) Accept(ws *websocket.Conn) {
-	defer h.cleanup(ws)
+	send := make(chan *WsMsg, 1)
+	done := make(chan struct{})
+	defer func() {
+		h.mutex.Lock()
+		delete(h.conns, ws)
+		h.mutex.Unlock()
+		close(done)
+		close(send)
+		ws.Close()
+	}
 
 	h.mutex.Lock()
 	h.conns[ws] = struct{}{}
 	h.mutex.Unlock()
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case msg := <-send:
+				err := websocket.JSON.Send(c, msg)
+				msg.respC <- err == nil
+			}
+		}
+	}
 
 	for {
 		var msg WsMsg
@@ -86,10 +107,4 @@ func (h *benchHandler) broadcast(ws *websocket.Conn, payload interface{}) error 
 }
 
 func (h *benchHandler) cleanup(ws *websocket.Conn) {
-	ws.Close()
-	h.mutex.Lock()
-
-	delete(h.conns, ws)
-
-	h.mutex.Unlock()
 }
