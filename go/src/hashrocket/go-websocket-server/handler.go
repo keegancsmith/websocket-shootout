@@ -70,12 +70,13 @@ func (h *benchHandler) echo(ws *websocket.Conn, payload interface{}) error {
 
 func (h *benchHandler) broadcast(ws *websocket.Conn, payload interface{}) error {
 	result := BroadcastResult{Type: "broadcastResult", Payload: payload}
+	request := &WsMsg{Type: "broadcast", Payload: payload}
 
 	h.mutex.RLock()
 
-	for c, _ := range h.conns {
-		if err := websocket.JSON.Send(c, &WsMsg{Type: "broadcast", Payload: payload}); err == nil {
-			result.ListenerCount += 1
+	for c := range h.conns {
+		if err := websocket.JSON.Send(c, request); err == nil {
+			result.ListenerCount++
 		}
 	}
 
